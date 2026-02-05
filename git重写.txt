@@ -1,0 +1,12 @@
+cd D:\Desktop\node\uav-gas-gateway\cloud-viewer
+// git merge --abort
+//git reset --hard HEAD
+// git status
+Remove-Item -Recurse -Force .git
+git init
+git branch -M main
+git remote add origin https://github.com/qrwitu142857alee-rgb/cloud-UAV.git
+// git remote set-url origin https://github.com/你的用户名/正确的仓库名.git
+git add .
+git commit -m "init"
+git push -u origin main --force
