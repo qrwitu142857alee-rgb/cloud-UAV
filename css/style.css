@@ -1,0 +1,39 @@
+body{font-family:system-ui,Segoe UI,Arial;margin:18px;max-width:1200px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1.6fr .7fr .9fr;gap:8px}
+.card{border:1px solid #ddd;border-radius:12px;padding:12px;min-width:260px;background:#fff}
+input,select{width:100%;padding:9px;border:1px solid #ccc;border-radius:10px}
+button{padding:10px 14px;border:1px solid #ccc;border-radius:12px;cursor:pointer}
+.muted{color:#666;font-size:12px}
+.small{font-size:12px}
+.ok{color:#0a7}
+.bad{color:#b00}
+.btnrow{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+pre{background:#f6f6f6;padding:12px;border-radius:12px;max-height:40vh;overflow:auto}
+
+#chartWrap{border:1px solid #eee;border-radius:12px;padding:10px;background:#fff}
+#co2Chart{width:100%;height:260px;display:block}
+
+.cards{display:flex;gap:10px;flex-wrap:wrap}
+.cardMini{border:1px solid #eee;border-radius:12px;padding:10px;min-width:160px}
+.cardMini .k{font-size:12px;color:#666}
+.cardMini .v{font-size:22px;margin-top:4px}
+
+.panels{display:flex;gap:10px;flex-wrap:wrap}
+.panel{border:1px solid #eee;border-radius:12px;padding:10px;min-width:210px;background:#fff}
+.panelTop{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.badge{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid #ddd}
+.badgeOnline{color:#0a7;border-color:#bfe9db;background:#f2fbf7}
+.badgeOffline{color:#b00;border-color:#f0b7b7;background:#fff5f5}
+.panelTime{font-size:12px;color:#666;margin-top:8px}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kv .k{font-size:12px;color:#666}
+.kv .v{font-size:18px;margin-top:2px}
+
+.progress{height:10px;border:1px solid #ddd;border-radius:999px;overflow:hidden;background:#fafafa}
+.progressBar{height:100%;background:#1f77b4}
+
+.dates{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.chip{font-size:12px;border:1px solid #ddd;border-radius:999px;padding:4px 10px;cursor:pointer;background:#fff}
+.chip:hover{background:#f6f6f6}

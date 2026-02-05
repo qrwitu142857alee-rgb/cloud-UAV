@@ -1,0 +1,10 @@
+{
+  "host": "8b441659281a45f9a3344a7a63b0a4a7.s1.eu.hivemq.cloud",
+  "port": 8884,
+  "path": "/mqtt",
+  "topic": "cloud/uav/+/telemetry",
+  "username": "uav-viewer",
+  "password": "q1q1w2e3t5i8Ad@",
+  "maxPoints": 120,
+  "offlineMs": 8000
+}
