@@ -5,6 +5,6 @@
   "topic": "cloud/uav/+/telemetry",
   "username": "uav-viewer",
   "password": "q1q1w2e3t5i8Ad@",
-  "maxPoints": 100,
+  "maxPoints": 120,
   "offlineMs": 8000
 }
