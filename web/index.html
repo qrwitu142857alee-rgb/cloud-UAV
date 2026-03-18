@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>UAV Gas Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>UAV Gas Monitor</h1>
+      <div class="sub">MQTT → Gateway → WebSocket → Web</div>
+    </div>
+
+    <div class="uplink-control">
+      <label class="muted small">上云路径：</label>
+      <select id="uplinkSel">
+        <option value="hive">Hive</option>
+        <option value="aliyun">Aliyun</option>
+        <option value="both">Hive + Aliyun</option>
+        <option value="off">关闭上云</option>
+      </select>
+      <button id="btnApplyUplink">Apply</button>
+      <span id="uplinkHint" class="muted small">-</span>
+    </div>
+    
+    <div id="uplinkStatus" class="uplink-status">
+      <div class="chip" id="uplinkActive">Active: -</div>
+      <div class="chip" id="uplinkHive">Hive link: -</div>
+      <div class="chip" id="uplinkAliyun">Aliyun link: -</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="label">CO₂</div>
+        <div class="value"><span id="co2">--</span><span class="unit">ppm</span></div>
+      </div>
+
+      <div class="card">
+        <div class="label">Temperature</div>
+        <div class="value"><span id="temp">--</span><span class="unit">°C</span></div>
+      </div>
+
+      <div class="card">
+        <div class="label">Humidity</div>
+        <div class="value"><span id="rh">--</span><span class="unit">%</span></div>
+      </div>
+
+      <div class="card">
+        <div class="label">Device</div>
+
+        <div style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+          <select id="deviceSelect" style="flex:1; padding:8px 10px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(0,0,0,.18); color:var(--text);">
+            <option value="">(auto)</option>
+          </select>
+        </div>
+
+        <div class="pill" style="margin-top:10px;">
+          <span id="statusDot" class="dot"></span>
+          <span id="statusText">--</span>
+        </div>
+
+        <div class="sub" style="margin-top:10px;">last seen: <span id="ago">--</span> ms</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="panel">
+        <h2>CO₂ Trend</h2>
+        <canvas id="chart"></canvas>
+      </div>
+
+      <div class="panel">
+        <h2>Raw message</h2>
+        <pre id="raw">{}</pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

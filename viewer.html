@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <title>UAV Cloud Live Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;margin:18px;max-width:1180px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+    .card{border:1px solid #ddd;border-radius:12px;padding:12px;min-width:260px}
+    input,select{width:100%;padding:9px;border:1px solid #ccc;border-radius:10px}
+    button{padding:10px 14px;border:1px solid #ccc;border-radius:12px;cursor:pointer}
+    .muted{color:#666;font-size:12px}
+    .ok{color:#0a7} .bad{color:#b00}
+    .small{font-size:12px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    pre{background:#f6f6f6;padding:12px;border-radius:12px;max-height:50vh;overflow:auto}
+    /* 关键：给 canvas 一个明确可见尺寸 */
+    #chartWrap{border:1px solid #eee;border-radius:12px;padding:10px;background:#fff}
+    #chart{width:100%;height:260px;display:block}
+  </style>
+</head>
+
+<body>
+  <h2>UAV Cloud Live Monitor（设备选择 + CO₂ 折线图 / 原生 Canvas）</h2>
+
+  <div class="row">
+    <div class="card">
+      <div class="muted">Host（HiveMQ Cloud）</div>
+      <input id="host" value="8b441659281a45f9a3344a7a63b0a4a7.s1.eu.hivemq.cloud" />
+      <div class="muted small" style="margin-top:6px;">不要带 mqtts://</div>
+    </div>
+
+    <div class="card">
+      <div class="muted">WSS Port</div>
+      <input id="port" value="8884" />
+    </div>
+
+    <div class="card">
+      <div class="muted">Path</div>
+      <input id="path" value="/mqtt" />
+    </div>
+
+    <div class="card">
+      <div class="muted">Username / Password</div>
+      <input id="user" value="uav_gateway" style="margin-bottom:8px;" />
+      <input id="pass" type="password" placeholder="password" />
+    </div>
+
+    <div class="card">
+      <div class="muted">订阅 Topic</div>
+      <input id="topic" value="cloud/uav/+/telemetry" />
+    </div>
+
+    <div class="card">
+      <div class="muted">Status</div>
+      <div id="st" class="bad">disconnected</div>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btnConn">Connect</button>
+        <button id="btnDis">Disconnect</button>
+        <button id="btnClear">Clear Chart</button>
+      </div>
+      <div class="muted small" style="margin-top:6px;" id="hint"></div>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:12px;">
+    <div class="card" style="min-width:320px;">
+      <div class="muted">设备选择（自动识别）</div>
+      <select id="deviceSel">
+        <option value="__all__">全部设备（ALL）</option>
+      </select>
+      <div class="muted small" style="margin-top:6px;">
+        从 topic 提取 cloud/uav/<b>devXX</b>/telemetry
+      </div>
+    </div>
+
+    <div class="card" style="min-width:320px;">
+      <div class="muted">CO₂ 字段映射</div>
+      <select id="co2KeySel">
+        <option value="auto" selected>自动（推荐）</option>
+        <option value="co2">co2</option>
+        <option value="CO2">CO2</option>
+        <option value="co2_ppm">co2_ppm</option>
+        <option value="ppm">ppm</option>
+        <option value="value">value</option>
+      </select>
+      <div class="muted small" style="margin-top:6px;">
+        图不动就切换；也可以稍后我帮你按你的 JSON 结构定制。
+      </div>
+    </div>
+
+    <div class="card" style="min-width:260px;">
+      <div class="muted">显示点数（滚动窗口）</div>
+      <input id="maxPoints" value="120" />
+      <div class="muted small" style="margin-top:6px;">例如 120 点</div>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:12px;">
+    <div>
+      <h3>CO₂ 折线图</h3>
+      <div id="chartWrap">
+        <canvas id="chart"></canvas>
+        <div class="muted small" id="chartNote" style="margin-top:6px;">-</div>
+      </div>
+    </div>
+
+    <div>
+      <h3>Latest message</h3>
+      <div class="muted" id="meta">-</div>
+      <pre id="out">{}</pre>
+    </div>
+  </div>
+
+  <!-- mqtt.js 浏览器版（你之前已验证可用） -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+  <script>
+    let client = null;
+
+    // device -> [{tLabel, y}]
+    const series = new Map();
+    const knownDevices = new Set();
+    window.__lastDeviceForAllMode = null;
+
+    const st = (ok, msg) => {
+      const el = document.getElementById('st');
+      el.textContent = msg;
+      el.className = ok ? 'ok' : 'bad';
+    };
+
+    // const safeJson = (s) => { try { return JSON.parse(s); } catch { return s; } };
+    const safeJson = (s) => {
+        try {
+            const a = JSON.parse(s);
+            if (typeof a === "string") {
+            // 有些 payload 是 " {...} " 这种二次包装
+            try { return JSON.parse(a); } catch { return a; }
+            }
+            return a;
+        } catch {
+            return s;
+        }
+        };
+
+    function buildWssUrl() {
+      const host = document.getElementById('host').value.trim();
+      const port = document.getElementById('port').value.trim();
+      let path = document.getElementById('path').value.trim();
+      if (!path.startsWith('/')) path = '/' + path;
+      return `wss://${host}:${port}${path}`;
+    }
+
+    function extractDeviceFromTopic(topic) {
+      const parts = topic.split('/');
+      const idx = parts.indexOf('uav');
+      if (idx >= 0 && parts.length > idx + 1) return parts[idx + 1];
+      return parts.length >= 2 ? parts[parts.length - 2] : 'unknown';
+    }
+
+    function ensureDeviceInSelector(device) {
+      if (knownDevices.has(device)) return;
+      knownDevices.add(device);
+      const sel = document.getElementById('deviceSel');
+      const opt = document.createElement('option');
+      opt.value = device;
+      opt.textContent = device;
+      sel.appendChild(opt);
+    }
+
+    function getMaxPoints() {
+      const v = Number(document.getElementById('maxPoints').value || 120);
+      return Number.isFinite(v) && v > 10 ? Math.floor(v) : 120;
+    }
+
+    function toNumberOrNull(v) {
+      if (v === null || v === undefined) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function co2FromPayload(obj, keyMode) {
+      if (!obj || typeof obj !== 'object') return null;
+
+      if (keyMode && keyMode !== 'auto') return toNumberOrNull(obj[keyMode]);
+
+      const candidates = ['co2', 'CO2', 'co2_ppm', 'CO2_ppm', 'ppm', 'value'];
+      for (const k of candidates) {
+        const n = toNumberOrNull(obj[k]);
+        if (n !== null) return n;
+      }
+
+    //   for (const k of ['data', 'telemetry', 'payload']) {
+    //     const v = obj[k];
+    //     if (v && typeof v === 'object') {
+    //       for (const kk of candidates) {
+    //         const n = toNumberOrNull(v[kk]);
+    //         if (n !== null) return n;
+    //       }
+    //     }
+    //   }
+      for (const k of ['sensors', 'data', 'telemetry', 'payload']) {
+        const v = obj[k];
+        if (v && typeof v === 'object') {
+            for (const kk of candidates) {
+            const n = toNumberOrNull(v[kk]);
+            if (n !== null) return n;
+            }
+        }
+      }
+      return null;
+    }
+
+    function pushPoint(device, y) {
+      const maxPoints = getMaxPoints();
+      const now = new Date();
+      const tLabel = now.toLocaleTimeString();
+
+      if (!series.has(device)) series.set(device, []);
+      const arr = series.get(device);
+      arr.push({ tLabel, y });
+      if (arr.length > maxPoints) arr.splice(0, arr.length - maxPoints);
+    }
+
+    // ===== 原生 Canvas 绘图 =====
+    const canvas = document.getElementById('chart');
+    const note = document.getElementById('chartNote');
+
+    function resizeCanvasToDisplaySize() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(1, Math.floor(rect.width * dpr));
+      const h = Math.max(1, Math.floor(rect.height * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w; canvas.height = h;
+      }
+      return { w, h, dpr };
+    }
+
+    function drawChart(device) {
+      const { w, h } = resizeCanvasToDisplaySize();
+      const ctx = canvas.getContext('2d');
+
+      // 背景
+      ctx.clearRect(0, 0, w, h);
+
+      const padL = 48, padR = 12, padT = 14, padB = 28;
+      const plotW = w - padL - padR;
+      const plotH = h - padT - padB;
+
+      // 网格
+      ctx.strokeStyle = '#eee';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padT + (plotH * i / 4);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+      }
+      for (let i = 0; i <= 6; i++) {
+        const x = padL + (plotW * i / 6);
+        ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+      }
+
+      const arr = series.get(device) || [];
+      if (arr.length < 2) {
+        // 轴
+        ctx.strokeStyle = '#bbb';
+        ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
+        ctx.fillStyle = '#666';
+        ctx.font = '12px system-ui, Segoe UI, Arial';
+        ctx.fillText('等待数据…', padL + 8, padT + 18);
+        note.textContent = device ? `当前设备：${device}（数据点不足）` : '未选择设备';
+        return;
+      }
+
+      const ys = arr.map(p => p.y);
+      let yMin = Math.min(...ys);
+      let yMax = Math.max(...ys);
+      if (yMin === yMax) { yMin -= 1; yMax += 1; } // 防止除零
+
+      // 轴
+      ctx.strokeStyle = '#bbb';
+      ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
+
+      // Y 轴刻度文字
+      ctx.fillStyle = '#666';
+      ctx.font = '12px system-ui, Segoe UI, Arial';
+      for (let i = 0; i <= 4; i++) {
+        const v = yMax - (yMax - yMin) * (i / 4);
+        const y = padT + plotH * (i / 4);
+        ctx.fillText(v.toFixed(1), 6, y + 4);
+      }
+
+      // 折线
+      ctx.strokeStyle = '#1f77b4';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < arr.length; i++) {
+        const x = padL + plotW * (i / (arr.length - 1));
+        const yNorm = (arr[i].y - yMin) / (yMax - yMin);
+        const y = padT + plotH * (1 - yNorm);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // 末端点
+      const last = arr[arr.length - 1];
+      const xLast = padL + plotW;
+      const yLast = padT + plotH * (1 - (last.y - yMin) / (yMax - yMin));
+      ctx.fillStyle = '#1f77b4';
+      ctx.beginPath(); ctx.arc(xLast, yLast, 3, 0, Math.PI * 2); ctx.fill();
+
+      note.textContent = `当前设备：${device} ｜ 点数：${arr.length} ｜ min=${yMin.toFixed(1)} max=${yMax.toFixed(1)} ｜ latest=${last.y}`;
+    }
+
+    function redrawForSelection() {
+      const sel = document.getElementById('deviceSel').value;
+      if (sel === '__all__') {
+        const dev = window.__lastDeviceForAllMode;
+        drawChart(dev);
+      } else {
+        drawChart(sel);
+      }
+    }
+
+    window.addEventListener('resize', redrawForSelection);
+    document.getElementById('deviceSel').addEventListener('change', redrawForSelection);
+    document.getElementById('maxPoints').addEventListener('change', redrawForSelection);
+    document.getElementById('co2KeySel').addEventListener('change', redrawForSelection);
+
+    document.getElementById('btnClear').onclick = () => {
+      series.clear();
+      knownDevices.clear();
+      window.__lastDeviceForAllMode = null;
+      const sel = document.getElementById('deviceSel');
+      sel.innerHTML = '<option value="__all__">全部设备（ALL）</option>';
+      redrawForSelection();
+    };
+
+    document.getElementById('btnConn').onclick = () => {
+      const url = buildWssUrl();
+      const username = document.getElementById('user').value.trim();
+      const password = document.getElementById('pass').value;
+      const topic = document.getElementById('topic').value.trim();
+      document.getElementById('hint').textContent = url;
+
+      if (client) client.end(true);
+
+      st(false, 'connecting...');
+      client = mqtt.connect(url, {
+        protocol: "wss",
+        protocolId: "MQTT",
+        protocolVersion: 4, // MQTT 3.1.1
+        username,
+        password,
+        reconnectPeriod: 2000,
+        keepalive: 30,
+        clean: true,
+        clientId: 'web_' + Math.random().toString(16).slice(2, 10)
+      });
+
+      client.on('connect', () => {
+        st(true, 'connected');
+        client.subscribe(topic, (err) => {
+          if (err) st(false, 'subscribe error: ' + err.message);
+        });
+      });
+
+      client.on('reconnect', () => st(false, 'reconnecting...'));
+      client.on('close', () => st(false, 'disconnected'));
+      client.on('offline', () => st(false, 'offline'));
+      client.on('error', (e) => {
+        console.error("MQTT error full:", e);
+        st(false, 'error: ' + (e && e.message ? e.message : String(e)));
+      });
+
+      client.on('message', (t, payload) => {
+        const text = payload.toString();
+        const obj = safeJson(text);
+
+        document.getElementById('meta').textContent =
+          `topic=${t}   time=${new Date().toLocaleString()}`;
+        document.getElementById('out').textContent =
+          (typeof obj === 'object') ? JSON.stringify(obj, null, 2) : String(obj);
+
+        const device = extractDeviceFromTopic(t);
+        ensureDeviceInSelector(device);
+
+        const keyMode = document.getElementById('co2KeySel').value;
+        const co2 = co2FromPayload(obj, keyMode);
+        if (co2 === null) {
+        // 把可用字段提示出来
+        if (obj && typeof obj === "object") {
+            note.textContent = `没识别到 CO₂；当前 JSON 顶层 keys：${Object.keys(obj).slice(0, 30).join(", ")}`;
+        } else {
+            note.textContent = `payload 不是对象（可能没解析成 JSON）：${String(obj).slice(0, 80)}...`;
+        }
+        return;
+        }
+
+        pushPoint(device, co2);
+        window.__lastDeviceForAllMode = device;
+
+        const sel = document.getElementById('deviceSel').value;
+        if (sel === device || sel === '__all__') redrawForSelection();
+      });
+    };
+
+    document.getElementById('btnDis').onclick = () => {
+      if (client) client.end(true);
+      client = null;
+      st(false, 'disconnected');
+    };
+
+    // 初始化画面
+    redrawForSelection();
+  </script>
+</body>
+</html>

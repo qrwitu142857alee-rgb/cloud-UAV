@@ -1,0 +1,15 @@
+{
+  "name": "uav-gas-gateway",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test:mqtt": "node test_mqtt.js",
+    "sim": "node tools/sim_pub.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.15.0",
+    "ws": "^8.19.0"
+  }
+}
