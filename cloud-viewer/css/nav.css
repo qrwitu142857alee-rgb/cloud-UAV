@@ -1,0 +1,22 @@
+.navTabs{
+  display:flex;
+  gap:10px;
+  margin-bottom:16px;
+}
+
+.tab{
+  padding:8px 18px;
+  border:none;
+  background:#2d3555;
+  color:#ddd;
+  cursor:pointer;
+  border-radius:6px;
+}
+
+.tab.active{
+  background:#4a5cff;
+}
+
+.view.hidden{
+  display:none;
+}
